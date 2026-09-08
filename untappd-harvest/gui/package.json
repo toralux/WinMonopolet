@@ -1,0 +1,23 @@
+{
+	"name": "untappd-beer-gui",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite --open",
+		"build": "vite build",
+		"preview": "vite preview",
+		"start": "npm run build && node server.mjs"
+	},
+	"dependencies": {
+		"devalue": "^5.1.1",
+		"express": "^4.21.2",
+		"open": "^10.1.0"
+	},
+	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "^5.0.3",
+		"svelte": "^5.16.0",
+		"typescript": "^5.7.2",
+		"vite": "^6.0.7"
+	}
+}
