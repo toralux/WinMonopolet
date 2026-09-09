@@ -128,3 +128,11 @@ npm start:dev
 ```
 
 The app should now available on `http://localhost:5173`
+
+## Untappd harvest tooling
+
+This fork adds personal Untappd filtering to the webapp itself. Harvested JSON files can be imported via the "Mine øl" section in the filter panel: beers you have had get a checkmark on their product cards and can be hidden with the "Skjul innsjekket" filter, both on store pages and on `/topp-rangert`. The import happens entirely in the browser (kept in localStorage) — no data is sent to the backend.
+
+The harvesting tooling itself lives in [`untappd-harvest/`](untappd-harvest/README.md). See the [untappd-harvest README](untappd-harvest/README.md) for usage.
+
+Note: the harvested files `untappd-beers.json` and `untappd-wishlist.json` contain personal data (your Untappd check-in history and ratings). They are gitignored runtime output and must never be committed to the repository.

@@ -139,6 +139,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 *.key
-untappd-harvest/untappd-beers.json
-untappd-harvest/untappd-wishlist.json
+untappd-harvest/untappd-beers*.json
+untappd-harvest/untappd-wishlist*.json
+untappd-harvest/chrome-profile/
+untappd-harvest/joined-store-*.json
 untappd-harvest/gui/data/
