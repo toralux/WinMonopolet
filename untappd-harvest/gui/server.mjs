@@ -20,7 +20,7 @@ app.use(express.static(dist));
 const port = Number(process.env.PORT) || 5178;
 app.listen(port, async () => {
 	const url = `http://localhost:${port}`;
-	console.log(`Beer GUI listening on ${url}`);
+	console.log(`Winmonopolet Personal listening on ${url}`);
 	if (process.env.NO_OPEN !== '1') {
 		try {
 			await open(url);

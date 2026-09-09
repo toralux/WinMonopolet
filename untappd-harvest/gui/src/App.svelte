@@ -271,7 +271,7 @@
 
 <div class="app">
 	<header class="top">
-		<h1>Beer GUI <span class="sub">Winmonopolet × Untappd</span></h1>
+		<h1>Winmonopolet Personal</h1>
 		<button class="primary" onclick={() => sync()} disabled={syncing || !selected.length}>
 			{syncing ? 'Syncing…' : 'Sync now'}
 		</button>

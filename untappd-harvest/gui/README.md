@@ -1,4 +1,4 @@
-# Beer GUI
+# Winmonopolet Personal
 
 Local web app that joins live Vinmonopolet store stock with your harvested Untappd
 check-in history, so you can browse what's in stock and spot beers you haven't tried.
@@ -33,7 +33,7 @@ npm start      # vite build + express serving dist/ and /api, opens your browser
   - `GET /api/inventory` — merged stock across cached stores joined with your data
 - UI: store picker (search by name/id, selection persisted in localStorage),
   "Hide beers I've had" toggle (default on; tried rows get an amber tint when shown),
-  category chips, style dropdown, dual-thumb ABV slider (with a ≥ 8 % preset),
+  category chips, style dropdown, dual-thumb ABV slider (with a ≤ 8 % preset),
   price range, free-text search, sortable columns (null ratings sort last).
 
 `gui/data/` is a runtime cache and is gitignored.
