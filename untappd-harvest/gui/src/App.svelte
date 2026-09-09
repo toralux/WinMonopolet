@@ -141,8 +141,11 @@
 	}
 
 	function shortName(n: string): string {
-		const head = n.split(/[—–]|,\s/)[0].trim();
-		return (head || n).slice(0, 14);
+		// Names look like "Oslo, Storo" / "Bærum, Kolstad" — the part after the
+		// comma/dash is what distinguishes stores in the same city.
+		const parts = n.split(/[—–]|,\s*/);
+		const tail = (parts[parts.length - 1] ?? '').trim();
+		return (tail || n).slice(0, 14);
 	}
 
 	function setSort(key: SortKey): void {
@@ -367,7 +370,7 @@
 			<label>
 				ABV {abvMin}–{abvMax}%
 				<span class="presets">
-					<button class="preset" onclick={() => { abvMin = 8; abvMax = 20; }}>≥ 8%</button>
+					<button class="preset" onclick={() => { abvMin = 0; abvMax = 8; }}>≤ 8%</button>
 					<button class="preset" onclick={() => { abvMin = 0; abvMax = 20; }}>reset</button>
 				</span>
 			</label>
@@ -414,6 +417,7 @@
 	</section>
 
 	<section class="panel table-wrap">
+		<div class="table-legend">Store columns = units in stock per store · Σ = total across selected stores</div>
 		<table>
 			<thead>
 				<tr>
