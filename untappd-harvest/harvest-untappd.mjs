@@ -1,7 +1,7 @@
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
+import readline from 'node:readline/promises';
 
-const USER = process.env.UNTAPPD_USER ?? 'Toralux';
 const LISTS = (process.env.LISTS ?? 'beers,wishlist').split(',');
 const PROFILE_DIR = new URL('./chrome-profile', import.meta.url).pathname;
 const BASE = 'https://untappd.com';
@@ -14,6 +14,71 @@ const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
 });
 
 const page = ctx.pages()[0] ?? (await ctx.newPage());
+
+const detectUsernameOnPage = () =>
+  page.evaluate(() => {
+    const usernameEl = document.querySelector('.user_mini .info .username');
+    const username = usernameEl?.textContent?.trim() ?? '';
+    if (/^[A-Za-z0-9_.-]+$/.test(username)) return username;
+
+    const profileLink = document.querySelector('a[data-href=":user/profile"]');
+    const profileMatch = (profileLink?.getAttribute('href') ?? '').match(
+      /^\/user\/([A-Za-z0-9_.-]+)\/?$/
+    );
+    if (profileMatch) return profileMatch[1];
+
+    const headerLinks = document.querySelectorAll(
+      'header a[href^="/user/"], #header a[href^="/user/"], nav a[href^="/user/"]'
+    );
+    for (const link of headerLinks) {
+      const match = (link.getAttribute('href') ?? '').match(/^\/user\/([A-Za-z0-9_.-]+)\/?$/);
+      if (match && !['logout', 'login', 'signin'].includes(match[1].toLowerCase())) {
+        return match[1];
+      }
+    }
+    return null;
+  });
+
+async function resolveUsername() {
+  console.log('[user] detecting username from your logged-in Untappd profile');
+  console.log('[user] >>> A CHROME WINDOW IS OPEN — LOG IN AND SOLVE ANY CAPTCHA THERE <<<');
+  await page.goto(BASE + '/home', { waitUntil: 'domcontentloaded' });
+
+  const deadline = Date.now() + 15 * 60 * 1000;
+  let lastNav = 0;
+  let announced = false;
+  while (Date.now() < deadline) {
+    let name = null;
+    try {
+      name = await detectUsernameOnPage();
+    } catch {
+      // page navigated mid-eval; retry next tick
+    }
+    if (name) {
+      console.log(`[user] logged in as ${name}`);
+      return name;
+    }
+    const url = page.url();
+    const userIsTyping = /\/login|\/auth|\/sign/.test(url) || !url.includes('untappd.com');
+    if (userIsTyping && !announced) {
+      console.log('[user] waiting for you to log in — take your time, the window will NOT refresh');
+      announced = true;
+    }
+    if (!userIsTyping && Date.now() - lastNav > 10000) {
+      lastNav = Date.now();
+      await page.goto(BASE + '/home', { waitUntil: 'domcontentloaded' }).catch(() => {});
+    }
+    await page.waitForTimeout(1500);
+  }
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (await rl.question('[user] could not detect your username — enter it: ')).trim();
+  rl.close();
+  if (!answer) throw new Error('no username given; set UNTAPPD_USER to skip detection');
+  return answer;
+}
+
+const USER = process.env.UNTAPPD_USER ?? (await resolveUsername());
 
 const extract = () =>
   page.$$eval('.beer-item', (els) =>
