@@ -1,12 +1,11 @@
 # untappd-harvest
 
 Personal tooling that joins your Untappd check-in history with live Vinmonopolet
-store stock. Three pieces:
+store stock. Two pieces:
 
 | Path | What it does |
 | --- | --- |
 | `harvest-untappd.mjs` | Playwright scraper → `untappd-beers.json` / `untappd-wishlist.json` |
-| `join-winmonopolet.mjs` | CLI join of harvested data with store stock → `joined-store-{id}.json` |
 | `gui/` | Local web app (Vite + Svelte) with filters/sorting — see `gui/README.md` |
 
 ## Setup
@@ -40,17 +39,7 @@ Options via env:
 UNTAPPD_USER=otheruser LISTS=beers node harvest-untappd.mjs   # UNTAPPD_USER optional; LISTS defaults: beers,wishlist
 ```
 
-## 2. CLI join against store stock
-
-```sh
-node join-winmonopolet.mjs        # defaults to stores 161 (Oslo, Storo) and 393 (Oslo, Skøyen)
-node join-winmonopolet.mjs 161 452
-```
-
-Prints wishlist-in-stock and top new-to-you beers per store and writes
-`joined-store-{id}.json`.
-
-## 3. Winmonopolet Personal — web UI (build & run)
+## 2. Winmonopolet Personal — web UI (build & run)
 
 ```sh
 cd gui
