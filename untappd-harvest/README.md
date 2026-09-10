@@ -31,12 +31,31 @@ node harvest-untappd.mjs
 - Scrolls the list via "Show More" (~1 request/sec) and writes:
   - `untappd-beers.json` — beers you've had (with your ratings)
   - `untappd-wishlist.json` — your wishlist
-- Existing output files are skipped; delete one to re-harvest just that list.
+- By default only the beers list is harvested; pass `--both` to also harvest
+  the wishlist, or `--wishlist-only` for just the wishlist.
+- If `untappd-beers.json` already exists, reruns are **incremental**: paging
+  stops as soon as it reaches beers already in the file, and the new beers
+  are merged into the existing file. Pass `--full` to force a complete
+  re-scrape instead. The wishlist has no paging, so it's simply skipped if
+  its file exists (again, `--full` forces a re-harvest).
 
-Options via env:
+### Options
+
+| Flag | Effect |
+| --- | --- |
+| `--full` | Ignore/replace existing output files; do a complete re-scrape. |
+| `--both` | Harvest beers and wishlist (default is beers only). |
+| `--wishlist-only` | Harvest only the wishlist. |
+
+`--wishlist-only` and `--both` are mutually exclusive.
 
 ```sh
-UNTAPPD_USER=otheruser LISTS=beers node harvest-untappd.mjs   # UNTAPPD_USER optional; LISTS defaults: beers,wishlist
+node harvest-untappd.mjs                    # incremental beers only (default)
+node harvest-untappd.mjs --both             # incremental beers + wishlist (wishlist skipped if it exists)
+node harvest-untappd.mjs --full             # full re-harvest of beers only
+node harvest-untappd.mjs --full --both      # full re-harvest of both lists
+node harvest-untappd.mjs --wishlist-only    # only (re)harvest the wishlist
+UNTAPPD_USER=otheruser node harvest-untappd.mjs   # override username detection
 ```
 
 ## 2. Import into the Winmonopolet webapp

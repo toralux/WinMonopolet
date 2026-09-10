@@ -2,7 +2,24 @@ import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 import readline from 'node:readline/promises';
 
-const LISTS = (process.env.LISTS ?? 'beers,wishlist').split(',');
+const argv = process.argv.slice(2);
+const FULL = argv.includes('--full');
+const WISHLIST_ONLY = argv.includes('--wishlist-only');
+const BOTH = argv.includes('--both');
+if (WISHLIST_ONLY && BOTH) {
+  throw new Error('--wishlist-only and --both are mutually exclusive');
+}
+
+// no list flag -> beers only; --both adds wishlist; --wishlist-only replaces it
+const LISTS = WISHLIST_ONLY
+  ? ['wishlist']
+  : BOTH
+    ? ['beers', 'wishlist']
+    : (process.env.LISTS ?? 'beers').split(',');
+
+// beers pages sort newest-first; a run of already-known bids marks where
+// previously harvested data begins, letting incremental runs stop early.
+const KNOWN_STREAK = 5;
 const PROFILE_DIR = new URL('./chrome-profile', import.meta.url).pathname;
 const BASE = 'https://untappd.com';
 
@@ -80,7 +97,11 @@ async function resolveUsername() {
 
 const USER = process.env.UNTAPPD_USER ?? (await resolveUsername());
 
-const extract = () =>
+// beer history uses .beer-item cards; the wishlist page uses a differently
+// shaped .list-container > .list-item markup with no "Show More" pagination.
+const ITEM_SELECTOR = { beers: '.beer-item', wishlist: '.list-container .list-item' };
+
+const extractBeers = () =>
   page.$$eval('.beer-item', (els) =>
     els.map((el) => {
       const blocks = [...el.querySelectorAll('.ratings .you')];
@@ -102,12 +123,62 @@ const extract = () =>
     })
   );
 
-async function harvest(kind) {
+const extractWishlist = () =>
+  page.$$eval('.list-container .list-item', (els) =>
+    els.map((el) => {
+      const nameLink = el.querySelector('.item-info h2 a');
+      const breweryLink = el.querySelector('.item-info h3 a');
+      const bidMatch = el.className.match(/beer-0-(\d+)/);
+      const styleAbv = el.querySelector('.item-info h4')?.textContent ?? '';
+      const abvMatch = styleAbv.match(/([\d.]+)%\s*ABV/);
+      const ratingEl = el.querySelector('.rating-container .caps');
+      return {
+        bid: bidMatch ? bidMatch[1] : el.querySelector('.remove-from-list')?.dataset.itemId ?? null,
+        name: nameLink?.textContent.trim() ?? null,
+        brewery: breweryLink?.textContent.trim() ?? null,
+        style: styleAbv.split('\u2022')[0]?.trim() || null,
+        globalRating: ratingEl ? parseFloat(ratingEl.dataset.rating) : null,
+        abv: abvMatch ? parseFloat(abvMatch[1]) : null,
+        dateAdded: el.querySelector('.date-added abbr')?.dataset.date ?? null,
+        url: nameLink?.getAttribute('href') ?? null
+      };
+    })
+  );
+
+function findKnownStreakBoundary(items, knownBidSet, streak = KNOWN_STREAK) {
+  let run = 0;
+  for (let i = 0; i < items.length; i++) {
+    if (knownBidSet.has(items[i].bid)) {
+      run++;
+      if (run >= streak) return i - streak + 1;
+    } else {
+      run = 0;
+    }
+  }
+  return -1;
+}
+
+async function harvest(kind, { full }) {
   const out = `untappd-${kind}.json`;
-  if (fs.existsSync(out)) {
-    console.log(`[skip] ${out} already exists`);
+  const fileExists = fs.existsSync(out);
+
+  // wishlist has no pagination to resume from, so it's a plain skip/replace.
+  if (kind === 'wishlist' && fileExists && !full) {
+    console.log(`[skip] ${out} already exists (use --full to re-harvest)`);
     return;
   }
+
+  let existing = null;
+  let knownBidSet = null;
+  if (kind === 'beers' && fileExists && !full) {
+    existing = JSON.parse(fs.readFileSync(out, 'utf8'));
+    knownBidSet = new Set(existing.map((b) => b.bid));
+    console.log(
+      `[beers] found existing file with ${existing.length} items; incremental mode (use --full to override)`
+    );
+  }
+
+  const itemSelector = ITEM_SELECTOR[kind] ?? '.beer-item';
   const path = `/user/${USER}/${kind}`;
   console.log(`[${kind}] opening ${BASE}${path}`);
   console.log(`[${kind}] >>> A CHROME WINDOW IS OPEN — LOG IN AND SOLVE ANY CAPTCHA THERE <<<`);
@@ -118,7 +189,7 @@ async function harvest(kind) {
   const deadline = Date.now() + 15 * 60 * 1000;
   let lastNav = 0;
   let announced = false;
-  while ((await page.locator('.beer-item').count()) === 0) {
+  while ((await page.locator(itemSelector).count()) === 0) {
     if (Date.now() > deadline) throw new Error(`[${kind}] timed out waiting for beer list`);
     const url = page.url();
     const userIsTyping = /\/login|\/auth|\/sign/.test(url) || !url.includes('untappd.com');
@@ -133,20 +204,25 @@ async function harvest(kind) {
     await page.waitForTimeout(1500);
   }
 
-  // Click "Show More" until exhausted, max ~1 request/sec.
+  // Click "Show More" until exhausted, max ~1 request/sec. The wishlist page
+  // has no such button (fully server-rendered), so this loop no-ops for it.
+  // In incremental mode, stop as soon as a run of already-known beers shows
+  // up (they sort newest-first, so that marks previously harvested data).
   let stall = 0;
-  for (;;) {
+  let reachedKnown = knownBidSet && findKnownStreakBoundary(await extractBeers(), knownBidSet) !== -1;
+  if (reachedKnown) console.log(`[${kind}] already-loaded page overlaps previously scraped beers`);
+  while (!reachedKnown) {
     const btn = page
       .locator('a:has-text("Show More"), button:has-text("Show More"), a:has-text("show more"), button:has-text("show more")')
       .first();
     if (!(await btn.isVisible().catch(() => false))) break;
-    const before = await page.locator('.beer-item').count();
+    const before = await page.locator(itemSelector).count();
     await btn.click();
-    for (let i = 0; i < 15 && (await page.locator('.beer-item').count()) === before; i++) {
+    for (let i = 0; i < 15 && (await page.locator(itemSelector).count()) === before; i++) {
       await page.waitForTimeout(200);
     }
     await page.waitForTimeout(1000);
-    const now = await page.locator('.beer-item').count();
+    const now = await page.locator(itemSelector).count();
     if (now === before) {
       stall++;
       console.log(`[${kind}] no growth (attempt ${stall}/3), ${now} items`);
@@ -157,17 +233,37 @@ async function harvest(kind) {
     } else {
       stall = 0;
       if (now % 50 < 10) console.log(`[${kind}] ${now} items loaded`);
+      if (knownBidSet) {
+        const boundary = findKnownStreakBoundary(await extractBeers(), knownBidSet);
+        if (boundary !== -1) {
+          reachedKnown = true;
+          console.log(`[${kind}] reached previously scraped beers after ${boundary} new items — stopping early`);
+        }
+      }
     }
   }
 
-  const items = await extract();
+  let items = await (kind === 'wishlist' ? extractWishlist() : extractBeers());
+
+  if (knownBidSet) {
+    const boundary = findKnownStreakBoundary(items, knownBidSet);
+    const newItems = boundary === -1 ? items : items.slice(0, boundary);
+    const merged = new Map();
+    for (const it of newItems) merged.set(it.bid, it);
+    for (const it of existing) if (!merged.has(it.bid)) merged.set(it.bid, it);
+    items = [...merged.values()];
+    console.log(
+      `[${kind}] incremental: ${newItems.length} new, ${items.length - newItems.length} carried over -> ${items.length} total`
+    );
+  }
+
   fs.writeFileSync(out, JSON.stringify(items, null, 2));
   console.log(`[${kind}] DONE: ${items.length} items -> ${out}`);
 }
 
 for (const kind of LISTS) {
   try {
-    await harvest(kind);
+    await harvest(kind, { full: FULL });
   } catch (err) {
     console.error(`[${kind}] failed: ${err.message}`);
   }
